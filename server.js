@@ -3,49 +3,47 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const session = require('express-session'); // ✅ Added for session handling
+const session = require('express-session');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Use Render's assigned port
 
-// ✅ Session Middleware
+// ---------------------------
+// Middleware
+// ---------------------------
+app.use(express.json());
+app.use(express.static(path.join(__dirname))); // Serve frontend
 app.use(session({
-    secret: 'super-secret-key', // you can change it later
+    secret: 'super-secret-key', 
     resave: false,
     saveUninitialized: true,
     cookie: { maxAge: 1000 * 60 * 60 } // 1 hour
 }));
 
-// Connect to SQLite
-const db = new sqlite3.Database(path.join(__dirname, 'practice.db'), (err) => {
-    if (err) console.error("Error connecting to database:", err.message);
-    else console.log("Connected to the SQLite database.");
+// ---------------------------
+// SQLite Connection
+// ---------------------------
+const dbPath = path.join(__dirname, 'practice.db');
+const db = new sqlite3.Database(dbPath, err => {
+    if (err) console.error("DB connection error:", err.message);
+    else console.log("Connected to SQLite database:", dbPath);
 });
 
-// Middleware
-app.use(express.static(__dirname)); 
-app.use(express.json());
-
-// ✅ LOGIN API — store user session
+// ---------------------------
+// Auth APIs
+// ---------------------------
 app.post('/login', (req, res) => {
     const { name, email } = req.body;
-    if (!name || !email) {
-        return res.status(400).json({ success: false, message: 'Invalid login data' });
-    }
+    if (!name || !email) return res.status(400).json({ success: false, message: 'Invalid login data' });
     req.session.user = { name, email };
     res.json({ success: true, name });
 });
 
-// ✅ USER INFO API — check if logged in
 app.get('/user', (req, res) => {
-    if (req.session.user) {
-        res.json({ loggedIn: true, name: req.session.user.name });
-    } else {
-        res.json({ loggedIn: false });
-    }
+    if (req.session.user) res.json({ loggedIn: true, name: req.session.user.name });
+    else res.json({ loggedIn: false });
 });
 
-// ✅ LOGOUT API
 app.post('/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) return res.status(500).json({ success: false, message: 'Logout failed' });
@@ -54,12 +52,10 @@ app.post('/logout', (req, res) => {
     });
 });
 
-// ===============================================================
-// Your Original SQL Compiler Endpoints (unchanged below)
-// ===============================================================
-
-// Helper function to fetch table data and schema
-const fetchTableDataAndSchema = (tableName) => {
+// ---------------------------
+// Helper: Fetch Table Data + Schema
+// ---------------------------
+const fetchTableDataAndSchema = tableName => {
     if (!tableName) return Promise.resolve({ rows: [], columns: [] });
     return new Promise((resolve, reject) => {
         db.all(`SELECT * FROM ${tableName}`, (err, rows) => {
@@ -77,16 +73,18 @@ const fetchTableDataAndSchema = (tableName) => {
     });
 };
 
-// Execute SQL
+// ---------------------------
+// SQL Compiler APIs
+// ---------------------------
 app.post('/api/execute-sql', async (req, res) => {
     const { query } = req.body;
     const cleanedQuery = query.trim();
+    if (!cleanedQuery) return res.status(400).json({ type: 'error', message: 'Query cannot be empty.' });
+
     const upperQuery = cleanedQuery.toUpperCase();
     const isSelect = upperQuery.startsWith('SELECT');
     const tableMatch = cleanedQuery.match(/\b(FROM|INTO|TABLE)\s+['"]?(\w+)['"]?/i);
     const tableName = tableMatch ? tableMatch[2] : null;
-
-    if (!cleanedQuery) return res.status(400).json({ type: 'error', message: 'Query cannot be empty.' });
 
     if (isSelect) {
         db.all(cleanedQuery, [], (err, rows) => {
@@ -99,25 +97,22 @@ app.post('/api/execute-sql', async (req, res) => {
                 if (!upperQuery.includes('CREATE TABLE') && e.message.includes('no such table')) throw e;
                 return { rows: [], columns: [] };
             });
+
             await new Promise((resolve, reject) => {
-                db.run(cleanedQuery, function (err) {
+                db.run(cleanedQuery, function(err) {
                     if (err) return reject(err);
                     resolve({ affectedRows: this.changes || 0 });
                 });
-            }).then(result => {
-                const affectedRows = result.affectedRows;
-                const action = upperQuery.split(/\s+/)[0];
-                if (action === 'DROP' && upperQuery.includes('TABLE')) {
-                    return res.json({ type: 'success', message: `Table '${tableName}' dropped successfully.`, data: null });
-                }
+            }).then(() => {
                 fetchTableDataAndSchema(tableName).then(updatedState => {
-                    let modificationMessage = `${affectedRows} rows affected by ${action}.`;
-                    if (action === 'CREATE') modificationMessage = `Table '${tableName}' created successfully.`;
-                    if (action === 'ALTER') modificationMessage = `Table '${tableName}' structure updated.`;
+                    let message = `${upperQuery.split(' ')[0]} executed successfully.`;
+                    if (upperQuery.startsWith('CREATE')) message = `Table '${tableName}' created successfully.`;
+                    if (upperQuery.startsWith('DROP')) message = `Table '${tableName}' dropped successfully.`;
+                    if (upperQuery.startsWith('ALTER')) message = `Table '${tableName}' altered successfully.`;
                     res.json({
                         type: 'dual_query',
-                        message: modificationMessage,
-                        previousData: { rows: previousState.rows, columns: previousState.columns },
+                        message,
+                        previousData: previousState,
                         updatedData: updatedState
                     });
                 });
@@ -128,7 +123,9 @@ app.post('/api/execute-sql', async (req, res) => {
     }
 });
 
-// Fetch Schema
+// ---------------------------
+// Fetch Schema API
+// ---------------------------
 app.get('/api/schema', (req, res) => {
     const sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
     db.all(sql, [], (err, tables) => {
@@ -166,5 +163,7 @@ app.get('/api/schema', (req, res) => {
     });
 });
 
-// Start server
+// ---------------------------
+// Start Server
+// ---------------------------
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
