@@ -1,4 +1,4 @@
-# SQL-Learning-Studio
+
 # SQL Learning Studio
 
 **SQL Learning Studio** is a modern, browser-based online SQL compiler that allows users to write, execute, and visualize SQL queries in real-time. It provides a friendly interface for learning and experimenting with SQL commands without the need to install a local database.
