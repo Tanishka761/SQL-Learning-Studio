@@ -53,5 +53,5 @@
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/sql-learning-studio.git
+git clone https://github.com/Tanishka761/SQL-Learning-Studio.git
 cd sql-learning-studio
