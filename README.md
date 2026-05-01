@@ -40,7 +40,7 @@
 
 - **Backend:**  
   - Optional: Node.js + Express + SQLite (for local testing)  
-  - Recommended: [Supabase](https://supabase.com/) for cloud-hosted PostgreSQL backend and API  
+  - [Supabase](https://supabase.com/) for cloud-hosted PostgreSQL backend and API  
   - REST API or Edge Functions for executing SQL commands
 
 - **Other Tools:**  
